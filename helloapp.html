@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html>
+<head lang="en">
+    <meta charset="UTF-8">
+    <meta http-equiv="x-ua-compatible" content="IE=edge,chrome=1">
+    <title>hello-app</title>
+    <style>
+        html,body{
+            margin: 0;
+            padding: 0;
+        }
+        #todoApp{
+            width: 600px;
+            margin: 30px auto;
+            border: 1px solid #D6BBFF;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        #header h1{
+            height: 60px;
+            margin: 0;
+            line-height: 60px;
+            text-align: center;
+            background: #D6BBFF;
+        }
+        #new-todo,
+        #new-todo-text{
+            height: 34px;
+            width: 100%;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+        #new-todo-text{
+            height: 200px;
+            margin-bottom: -3px;
+        }
+        .nav{
+            background: #E2D2FF;
+            height: 50px;
+        }
+        .nav a{
+            display: inline-block;
+            box-sizing: border-box;
+            padding: 10px 0;
+            width: 180px;
+            line-height: 30px;
+            text-align: center;
+            text-decoration: none;
+        }
+        .nav a:hover{
+            color: #fff;
+            background: #B985FF;
+        }
+        #todo-list{
+            margin: 0;
+            padding: 0px;
+            position: relative;
+        }
+        #todo-list li{
+            padding: 10px 20px;
+            line-height: 30px;
+        }
+        #todo-list li:nth-child(2n){
+            background: #DCCAFF;
+        }
+        #todo-list li:nth-child(2n+1){
+            background: #EAE1FF;
+        }
+        #todo-list li:hover{
+            cursor: pointer;
+            background: #F1F1D2;
+        }
+        #todo-list li button{
+            border: 1px solid #fff;
+            border-radius: 5px;
+            color: #B985FF;
+            background: #E8EDFF;
+            height: 30px;
+            cursor: pointer;
+            position: absolute;
+            right: 20px;
+        }
+        #todoApp ul {
+            list-style-type: none;
+        }
+        #todo-list input.edit {
+            display: none;
+        }
+        #todo-list .editing label {
+            display: none;;
+        }
+        #todo-list .editing input.edit {
+            display: inline;
+        }
+        button+p{
+            text-indent: 2em;
+        }
+    </style>
+</head>
+<body>
+
+<section id="todoApp">
+    <header id="header">
+        <h1>Todos</h1>
+        <input id="new-todo" placeholder="输入标题" autofocus>
+        <textarea id="new-todo-text" placeholder="输入内容,按回车键保存"></textarea>
+        <div class="nav">
+            <a href="#/index">显示所有</a>  |
+            <a href="#/pending">显示未完成</a>  |
+            <a href="#/completed">显示已完成</a>
+        </div>
+    </header>
+    <section id="main">
+        <ul id="todo-list"></ul>
+    </section>
+</section>
+<script type="text/template" id="item-template">
+    <div class="view">
+        <input class="toggle" type="checkbox" <%= completed ? 'checked' : '' %> id="<%- title %>">
+        <label for="<%- title %>"><%- title %></label>
+        <input class="edit" value="<%- title %>">
+        <button class="destroy">remove</button>
+        <div><%- text %></div>
+    </div>
+</script>
+
+<script src="lib/jquery-2.1.4.min.js"></script>
+<script src="lib/underscore.js"></script>
+<script src="lib/backbone.js"></script>
+<script src="lib/backbone.localStorage.js"></script>
+<script>
+    'use strict'
+    var app = {};
+
+    //--------------------------------------------------------------
+    //Models
+    //--------------------------------------------------------------
+    app.Todo = Backbone.Model.extend({
+        defaults: {
+            title: '',
+            completed: false,
+            text: ''
+        },
+        toggle:function(){
+            this.save({completed: !this.get('completed')});
+        }
+    });
+
+    //--------------------------------------------------------------
+    //Collections
+    //--------------------------------------------------------------
+
+    app.TodoList = Backbone.Collection.extend({
+        model: app.Todo,
+        localStorage: new Store('backbone-todo'),
+        completed: function(){
+            return this.filter(function( todo ) {
+                return todo.get('completed');
+            });
+        },
+        remaining: function() {
+            return this.without.apply( this, this.completed() );
+        }
+    });
+
+   app.todoList = new app.TodoList();
+
+    //--------------------------------------------------------------
+    //Views
+    //--------------------------------------------------------------
+    app.Todoview = Backbone.View.extend({
+        tagName: 'li',
+        template: _.template($('#item-template').html()),
+        render: function() {
+            this.$el.html(this.template(this.model.toJSON()));
+            this.input = this.$('.edit');
+            return this;
+        },
+        initialize: function(){
+            this.model.on('change', this.render, this);
+            this.model.on('destroy', this.remove, this);
+        },
+        events: {
+            'dblclick label': 'edit',
+            'keypress .edit' : 'updateOnEnter',
+            'blur .edit' : 'close',
+            'click .toggle': 'toggleCompleted',
+            'click .destroy': 'destroy'
+        },
+        edit: function() {
+            this.$el.addClass('editing');
+            this.input.focus();
+        },
+        close: function() {
+            var value = this.input.val().trim();
+            if (value) {
+               this.model.save({title : value});
+            }
+            this.$el.removeClass('editing');
+        },
+        updateOnEnter:  function(e) {
+            if (e.which === 13) {
+                this.close();
+            }
+        },
+        toggleCompleted: function(){
+            this.model.toggle();
+        },
+        destroy: function(){
+            this.model.destroy();
+        }
+    });
+    app.AppView = Backbone.View.extend({
+        el: '#todoApp',
+
+        initialize: function () {
+            this.input = this.$('#new-todo');
+
+            this.textarea = this.$('#new-todo-text');
+            app.todoList.on('add', this.addAll, this);
+            app.todoList.on('reset', this.addAll, this);
+            app.todoList.fetch();
+        },
+        events: {
+            'keypress #new-todo': 'createTodoOnEnter',
+            'keypress #new-todo-text': 'createTodoOnEnter'
+        },
+        createTodoOnEnter: function(e) {
+            if (e.which !== 13 || !this.input.val().trim() || !this.textarea.val().trim() ) {
+                return;
+            }
+            app.todoList.create(this.newAttributes());
+            this.input.val('');
+            this.textarea.val('');
+        },
+        addOne: function(todo){
+            var view = new app.Todoview({model: todo});
+            $('#todo-list').append(view.render().el);
+        },
+        addAll: function(){
+            this.$('#todo-list').html('');
+            switch(window.filter) {
+                case 'pending':
+                    _.each(app.todoList.remaining(),this.addOne);
+                    break;
+                case 'completed':
+                    _.each(app.todoList.completed(),this.addOne);
+                    break;
+                default :
+                    app.todoList.each(this.addOne,this);
+                    break;
+            }
+        },
+        newAttributes: function() {
+            return {
+                title: this.input.val().trim(),
+                completed: false,
+                text: this.textarea.val().trim()
+            }
+        }
+    });
+
+    app.Router = Backbone.Router.extend({
+        routes: {
+            '*filter' : 'setFilter'
+        },
+        setFilter: function (params) {
+            if(!params) return;
+            console.log('app.routes.params = ' + params);
+            window.filter = params.trim() || '';
+            app.todoList.trigger('reset');
+        }
+    });
+
+    //--------------------------------------------------------------
+    //Initializers
+    //--------------------------------------------------------------
+    app.router = new app.Router();
+    Backbone.history.start();
+    app.appView = new app.AppView();
+
+
+</script>
+</body>
+</html>
