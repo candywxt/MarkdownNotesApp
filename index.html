@@ -3,7 +3,7 @@
 <head lang="en">
     <meta charset="UTF-8">
     <meta http-equiv="x-ua-compatible" content="IE=edge,chrome=1">
-    <title>hello-app</title>
+    <title>MarkdownNotesApp</title>
     <style>
         html,body{
             margin: 0;
@@ -102,6 +102,11 @@
 <section id="todoApp">
     <header id="header">
         <h1>Todos</h1>
+        <select id="cate-list"></select>
+        <script type="text/template" id="cate-template">
+            <%- cate_title %>
+        </script>
+        <input id="new-cate" placeholder="输入分类">
         <input id="new-todo" placeholder="输入标题" autofocus>
         <textarea id="new-todo-text" placeholder="输入内容,按回车键保存"></textarea>
         <div class="nav">
@@ -139,10 +144,18 @@
         defaults: {
             title: '',
             completed: false,
-            text: ''
+            text: '',
+            pid: 0
         },
         toggle:function(){
             this.save({completed: !this.get('completed')});
+        }
+    });
+    app.Cate = Backbone.Model.extend({
+        defaults: {
+            cate_title: '',
+            id: 0,
+            child: []
         }
     });
 
@@ -164,6 +177,13 @@
     });
 
    app.todoList = new app.TodoList();
+
+   app.CateList = Backbone.Collection.extend({
+        model: app.Cate
+   });
+
+   app.cateList = new app.CateList();
+
 
     //--------------------------------------------------------------
     //Views
@@ -210,13 +230,45 @@
             this.model.destroy();
         }
     });
+
+    app.CateView = Backbone.View.extend({
+        tagName: 'option',
+        template: _.template($('#cate-template').html()),
+        render: function(){
+            this.$el.html(this.template(this.model.toJSON()));
+            return this;
+        },
+        initialize: function(){
+            this.cate = this.$('#new-cate');
+            this.model.on('change',this.render,this);
+        },
+        events: {
+            'keypress #new-cate': 'craeteCateOnEnter'
+        },
+        craeteCateOnEnter: function(e) {
+            if (e.which !== 13 || !this.cate.val().trim()) {
+                return;
+            }
+            app.cateList.create(this.newAttributes());
+            this.cate.val('');
+        },
+        newAttributes: function(){
+            return {
+                title: this.cate.val().trim(),
+                id: 0,
+                child:[0]
+            }
+        }
+    })
+
     app.AppView = Backbone.View.extend({
         el: '#todoApp',
 
         initialize: function () {
+            this.cate = this.$('#new-cate');
             this.input = this.$('#new-todo');
-
             this.textarea = this.$('#new-todo-text');
+
             app.todoList.on('add', this.addAll, this);
             app.todoList.on('reset', this.addAll, this);
             app.todoList.fetch();
@@ -226,10 +278,11 @@
             'keypress #new-todo-text': 'createTodoOnEnter'
         },
         createTodoOnEnter: function(e) {
-            if (e.which !== 13 || !this.input.val().trim() || !this.textarea.val().trim() ) {
+            if (e.which !== 13 || !this.input.val().trim() || !this.textarea.val().trim() || !this.cate.val().trim()) {
                 return;
             }
             app.todoList.create(this.newAttributes());
+            app.cateList.create(this.cateAttributes());
             this.input.val('');
             this.textarea.val('');
         },
@@ -256,6 +309,11 @@
                 title: this.input.val().trim(),
                 completed: false,
                 text: this.textarea.val().trim()
+            }
+        },
+        cateAttributes: function() {
+            return {
+                cate_title: this.cate.val().trim()
             }
         }
     });
